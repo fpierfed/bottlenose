@@ -2,10 +2,6 @@ from base64 import b64encode
 import gzip
 import sys
 import urllib
-try:
-    import urllib2
-except ImportError:
-    import urllib.request as urllib2
 import hmac
 import os
 import time
@@ -29,6 +25,7 @@ except ImportError:
     from urllib.parse import quote as urllib_quote
     unicode = str
 
+import requests
 
 # Python 2.4 compatibility
 # http://code.google.com/p/boto/source/detail?r=1011
@@ -193,23 +190,12 @@ class AmazonCall(object):
         err_env is a dict of additional info passed to the error handler
         """
         while True:  # may retry on error
-            api_request = urllib2.Request(
-                api_url, headers={"Accept-Encoding": "gzip"})
-
             log.debug("Amazon URL: %s" % api_url)
 
             try:
-                if self.Timeout and sys.version[:3] in ["2.4", "2.5"]:
-                    # urllib2.urlopen() doesn't accept timeout until 2.6
-                    old_timeout = socket.getdefaulttimeout()
-                    try:
-                        socket.setdefaulttimeout(self.Timeout)
-                        return urllib2.urlopen(api_request)
-                    finally:
-                        socket.setdefaulttimeout(old_timeout)
-                else:
-                    # the simple way
-                    return urllib2.urlopen(api_request, timeout=self.Timeout)
+                r = requests.get(api_url, headers={"Accept-Encoding": "gzip"},
+                                 timeout=self.Timeout)
+                return r
             except:
                 if not self.ErrorHandler:
                     raise
@@ -250,18 +236,7 @@ class AmazonCall(object):
         response = self._call_api(api_url,
                                   {'api_url': api_url, 'cache_url': cache_url})
 
-        # decompress the response if need be
-        if sys.version_info[0] == 3:
-            if "gzip" in response.info().get("Content-Encoding"):
-                response_text = gzip.decompress(response.read())
-            else:
-                response_text = response.read()
-        else:
-            if "gzip" in response.info().getheader("Content-Encoding"):
-                gzipped_file = gzip.GzipFile(fileobj=StringIO(response.read()))
-                response_text = gzipped_file.read()
-            else:
-                response_text = response.read()
+        response_text = response.text
 
         # write it back to the cache
         if self.CacheWriter:
